@@ -1,13 +1,12 @@
 import datetime
+import os
 import sqlite3
 import sys
 
 from PyQt6.QtCore import QDateTime,QSettings,Qt
-from PyQt6.QtWidgets import QApplication,QButtonGroup,QCheckBox,QDateTimeEdit,QDialog,QGridLayout,QHBoxLayout,QLabel,QLineEdit,QMainWindow,QMessageBox,QPlainTextEdit,QPushButton,QRadioButton,QTabWidget,QTableWidget,QWidget
+from PyQt6.QtWidgets import QApplication,QButtonGroup,QCheckBox,QDateTimeEdit,QDialog,QFileDialog,QGridLayout,QHBoxLayout,QLabel,QLineEdit,QMainWindow,QMessageBox,QPlainTextEdit,QPushButton,QRadioButton,QTabWidget,QTableWidget,QWidget
 
-con=sqlite3.connect("sentences.db")
-cur=con.cursor()
-
+con,cur=None,None
 label_id=[]
 
 def confirm(parent,title,text):
@@ -36,8 +35,11 @@ class Sel_Label(QDialog):
 			self.labelTable.setColumnWidth(i,width[i])
 		layout.addWidget(self.labelTable,0,0,1,5)
 
-		layout.addWidget(QPushButton("确定",self,clicked=self.save),1,0,1,2)
-		layout.addWidget(QPushButton("取消",self,clicked=self.reject),1,3,1,2)
+		if type:
+			layout.addWidget(QPushButton("全选",self,clicked=lambda _:self.sel_all(True)),1,0,1,2)
+			layout.addWidget(QPushButton("全不选",self,clicked=lambda _:self.sel_all(False)),1,3,1,2)
+		layout.addWidget(QPushButton("确定",self,clicked=self.save),type+1,0,1,2)
+		layout.addWidget(QPushButton("取消",self,clicked=self.reject),type+1,3,1,2)
 		layout.setSpacing(15)
 		layout.setContentsMargins(15,15,15,15)
 
@@ -58,6 +60,10 @@ class Sel_Label(QDialog):
 			self.btnGroup.addButton(btn,v[0])
 			layout.addWidget(btn)
 			self.labelTable.setCellWidget(k,1,widget)
+
+	def sel_all(self,type):
+		for i in range(self.labelTable.rowCount()):
+			self.btnGroup.button(i).setChecked(type)
 
 	def save(self):
 		global label_id
@@ -194,13 +200,12 @@ class Search(QDialog):
 
 	def show_search(self):
 		self.searchTable.setRowCount(0)
-		if not self.searchTxt.text(): return
 		labels={}
 		for i in cur.execute("SELECT * FROM labels").fetchall():
 			labels[i[0]]=i[1]
 		fromTime=self.fromTime.dateTime().toPyDateTime()
 		tillTime=self.tillTime.dateTime().toPyDateTime()
-		res=cur.execute("SELECT * FROM quotes").fetchall()
+		res=cur.execute("SELECT * FROM quotes ORDER BY time DESC").fetchall()
 		for k,v in enumerate(res):
 			if self.searchTxt.text() not in v[1]: continue
 			if v[2] not in self.label: continue
@@ -214,8 +219,13 @@ class Search(QDialog):
 			time=QLabel(v[3][:10],self)
 			time.setToolTip(v[3])
 			items=[quote,label,time]
-			items.append(QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id)))
-			items.append(QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id)))
+			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
+			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
+			if edit:
+				edit_btn.setEnabled(False)
+				delete_btn.setEnabled(False)
+			items=items+[edit_btn,delete_btn]
 
 			for i in range(5):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -239,12 +249,21 @@ class Sentences(QMainWindow):
 		self.resize(500,500)
 
 		setting=QSettings("Mzxr","Sentences")
-		if not setting.value("init"):
+		global con,cur
+		if not setting.value("path"):
+			QMessageBox.information(self,"提示","请选择数据的储存位置")
+			path=str(QFileDialog.getExistingDirectory(self,"选择数据位置"))
+			if not path: sys.exit()
+			con=sqlite3.connect(path+"/sentences.db")
+			cur=con.cursor()
 			cur.execute("CREATE TABLE quotes (id INTEGER PRIMARY KEY AUTOINCREMENT, quote TEXT, label INTEGER, time TEXT)")
 			cur.execute("CREATE TABLE labels (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT)")
 			cur.execute("INSERT INTO labels (id,label) VALUES (0,'None')")
 			con.commit()
-			setting.setValue("init",True)
+			setting.setValue("path",path)
+		else:
+			con=sqlite3.connect(setting.value("path")+"/sentences.db")
+			cur=con.cursor()
 
 		tab=QTabWidget(self)
 		tab.addTab(self.quote(),"摘录")
@@ -277,7 +296,7 @@ class Sentences(QMainWindow):
 		labels={}
 		for i in cur.execute("SELECT * FROM labels").fetchall():
 			labels[i[0]]=i[1]
-		for k,v in enumerate(cur.execute("SELECT * FROM quotes").fetchall()):
+		for k,v in enumerate(cur.execute("SELECT * FROM quotes ORDER BY time DESC").fetchall()):
 			self.quoteTable.insertRow(k)
 			quote=QLabel(v[1].replace("\n"," "),self)
 			quote.setContentsMargins(5,0,5,0)
@@ -287,8 +306,13 @@ class Sentences(QMainWindow):
 			time=QLabel(v[3][:10],self)
 			time.setToolTip(v[3])
 			items=[quote,label,time]
-			items.append(QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id)))
-			items.append(QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id)))
+			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
+			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
+			if edit:
+				edit_btn.setEnabled(False)
+				delete_btn.setEnabled(False)
+			items=items+[edit_btn,delete_btn]
 
 			for i in range(5):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -328,8 +352,13 @@ class Sentences(QMainWindow):
 			self.labelTable.insertRow(k)
 			count=cur.execute("SELECT COUNT(*) FROM quotes WHERE label=?",(v[0],)).fetchone()[0]
 			items=[QLabel(v[1],self),QLabel(str(count),self)]
-			items.append(QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_label(id)))
-			items.append(QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_label(id)))
+			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_label(id))
+			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_label(id))
+			if edit:
+				edit_btn.setEnabled(False)
+				delete_btn.setEnabled(False)
+			items=items+[edit_btn,delete_btn]
 
 			for i in range(4):
 				if i in [0,1]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -356,16 +385,53 @@ class Sentences(QMainWindow):
 		widget=QWidget(self)
 		layout=QGridLayout()
 		widget.setLayout(layout)
-		for i in range(5):
+		for i in range(6):
 			layout.setColumnStretch(i,1)
 
-		layout.addWidget(QPushButton("搜索",self,clicked=lambda _:Search().exec()),0,0,1,5)
+		layout.addWidget(QLabel("搜索摘录：",self),0,1,1,1)
+		layout.addWidget(QPushButton("搜索",self,clicked=lambda _:self.search()),0,2,1,2)
+		layout.addWidget(QLabel("数据位置：",self),1,1,1,1)
+		layout.addWidget(QPushButton("移动",self,clicked=lambda _:self.set_path()),1,2,1,2)
+		layout.addWidget(QLabel("编辑状态：",self),2,1,1,1)
+		self.editBtn=QPushButton("",self,clicked=lambda _:self.set_edit())
+		layout.addWidget(self.editBtn,2,2,1,2)
+		layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+		self.show_preference()
+
 		return widget
+
+	def show_preference(self):
+		edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+		text="禁止" if edit else "允许"
+		self.editBtn.setText(text)
+
+	def search(self):
+		Search().exec()
+		self.update_show()
+
+	def set_path(self):
+		path1=QSettings("Mzxr","Sentences").value("path")
+		path2=str(QFileDialog.getExistingDirectory(self,"选择数据位置"))
+		if not path2 or path1==path2: return
+		global con,cur
+		con.close()
+		try: os.rename(path1+"/sentences.db",path2+"/sentences.db")
+		except: return QMessageBox.critical(self,"错误","数据移动失败")
+		QSettings("Mzxr","Sentences").setValue("path",path2)
+		con=sqlite3.connect(path2+"/sentences.db")
+		cur=con.cursor()
+
+	def set_edit(self):
+		edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+		text="允许" if edit else "禁止"
+		if not confirm(self,text+"编辑","是否"+text+"编辑？"): return
+		QSettings("Mzxr","Sentences").setValue("edit",str(not edit))
+		self.update_show()
+		self.show_preference()
 
 if __name__=="__main__":
 	app=QApplication(sys.argv)
 	ex=Sentences()
 	ex.show()
 	app.exec()
-	con.close()
 	sys.exit()
