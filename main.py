@@ -2,29 +2,31 @@ import datetime
 import sqlite3
 import sys
 
-from PyQt6.QtCore import QSettings,Qt
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QApplication,QDialog,QGridLayout,QLabel,QLineEdit,QMainWindow,QMessageBox,QPlainTextEdit,QPushButton,QTabWidget,QTableWidget,QWidget
+from PyQt6.QtCore import QDateTime,QSettings,Qt
+from PyQt6.QtWidgets import QApplication,QButtonGroup,QCheckBox,QDateTimeEdit,QDialog,QGridLayout,QHBoxLayout,QLabel,QLineEdit,QMainWindow,QMessageBox,QPlainTextEdit,QPushButton,QRadioButton,QTabWidget,QTableWidget,QWidget
 
 con=sqlite3.connect("sentences.db")
 cur=con.cursor()
 
-label_id=0
+label_id=[]
 
 def confirm(parent,title,text):
 	res=QMessageBox.question(parent,title,text,QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
 	return res==QMessageBox.StandardButton.Yes
 
 class Sel_Label(QDialog):
-	def __init__(self):
+	def __init__(self,type):
 		super().__init__()
 
 		self.setWindowTitle("选择标签")
-		self.setFixedWidth(200)
+		self.setFixedWidth(215)
 		layout=QGridLayout()
 		self.setLayout(layout)
 		for i in range(5):
 			layout.setColumnStretch(i,1)
+
+		self.btnGroup=QButtonGroup(self)
+		self.btnGroup.setExclusive(not type)
 
 		self.labelTable=QTableWidget(self)
 		self.labelTable.setColumnCount(2)
@@ -34,6 +36,7 @@ class Sel_Label(QDialog):
 			self.labelTable.setColumnWidth(i,width[i])
 		layout.addWidget(self.labelTable,0,0,1,5)
 
+		layout.addWidget(QPushButton("确定",self,clicked=self.save),1,0,1,2)
 		layout.addWidget(QPushButton("取消",self,clicked=self.reject),1,3,1,2)
 		layout.setSpacing(15)
 		layout.setContentsMargins(15,15,15,15)
@@ -42,17 +45,27 @@ class Sel_Label(QDialog):
 		for k,v in enumerate(labels):
 			self.labelTable.insertRow(k)
 			label=QLabel(v[1],self)
-			if v[0]==label_id:
-				bold=QFont()
-				bold.setBold(True)
-				label.setFont(bold)
 			self.labelTable.setCellWidget(k,0,label)
 			label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-			self.labelTable.setCellWidget(k,1,QPushButton("选择",self,clicked=lambda _,id=v[0]:self.sel_item(id)))
 
-	def sel_item(self,id):
+			widget=QWidget(self)
+			layout=QHBoxLayout()
+			widget.setLayout(layout)
+			layout.setContentsMargins(0,0,0,0)
+			layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+			btn=QCheckBox(self) if type else QRadioButton(self)
+			if v[0] in label_id: btn.setChecked(True)
+			self.btnGroup.addButton(btn,v[0])
+			layout.addWidget(btn)
+			self.labelTable.setCellWidget(k,1,widget)
+
+	def save(self):
 		global label_id
-		label_id=id
+		label_id=[]
+		labels=cur.execute("SELECT id FROM labels").fetchall()
+		for i in labels:
+			if self.btnGroup.button(i[0]).isChecked():
+				label_id.append(i[0])
 		self.accept()
 
 class Edit_Quote(QDialog):
@@ -89,9 +102,9 @@ class Edit_Quote(QDialog):
 
 	def sel_label(self):
 		global label_id
-		label_id=self.label
-		Sel_Label().exec()
-		self.label=label_id
+		label_id=[self.label]
+		Sel_Label(False).exec()
+		self.label=label_id[0]
 		self.set_name()
 
 	def save(self):
@@ -131,6 +144,93 @@ class Edit_Label(QDialog):
 		con.commit()
 		self.accept()
 
+class Search(QDialog):
+	def __init__(self):
+		super().__init__()
+
+		self.setWindowTitle("搜索")
+		self.resize(560,500)
+
+		layout=QGridLayout()
+		self.setLayout(layout)
+		for i in range(8):
+			layout.setColumnStretch(i,1)
+
+		self.label=[i[0] for i in cur.execute("SELECT id FROM labels").fetchall()]
+		labelBtn=QPushButton("选择标签",self,clicked=self.sel_label)
+		labelBtn.setAutoDefault(False)
+		layout.addWidget(labelBtn,0,6,1,2)
+		fromLabel=QLabel("起始时间：",self)
+		self.fromTime=QDateTimeEdit(self,calendarPopup=True,dateTime=QDateTime(2000,1,1,0,0))
+		tillLabel=QLabel("结束时间：",self)
+		self.tillTime=QDateTimeEdit(self,calendarPopup=True,dateTime=QDateTime.currentDateTime())
+		fromLabel.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+		tillLabel.setAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+		layout.addWidget(fromLabel,1,0,1,1)
+		layout.addWidget(self.fromTime,1,1,1,2)
+		layout.addWidget(tillLabel,1,3,1,1)
+		layout.addWidget(self.tillTime,1,4,1,2)
+
+		self.searchTxt=QLineEdit(self,placeholderText="搜索内容")
+		self.searchBtn=QPushButton("搜索",self,clicked=self.show_search)
+		self.searchTxt.returnPressed.connect(self.searchBtn.click)
+		layout.addWidget(self.searchTxt,0,0,1,6)
+		layout.addWidget(self.searchBtn,1,6,1,2)
+
+		self.searchTable=QTableWidget(self)
+		self.searchTable.setColumnCount(5)
+		self.searchTable.setHorizontalHeaderLabels(["摘录","标签","时间","编辑","删除"])
+		width=[272,60,80,50,50]
+		for i in range(5):
+			self.searchTable.setColumnWidth(i,width[i])
+		layout.addWidget(self.searchTable,2,0,1,8)
+		layout.setContentsMargins(15,15,15,15)
+
+	def sel_label(self):
+		global label_id
+		label_id=self.label
+		Sel_Label(True).exec()
+		self.label=label_id
+
+	def show_search(self):
+		self.searchTable.setRowCount(0)
+		if not self.searchTxt.text(): return
+		labels={}
+		for i in cur.execute("SELECT * FROM labels").fetchall():
+			labels[i[0]]=i[1]
+		fromTime=self.fromTime.dateTime().toPyDateTime()
+		tillTime=self.tillTime.dateTime().toPyDateTime()
+		res=cur.execute("SELECT * FROM quotes").fetchall()
+		for k,v in enumerate(res):
+			if self.searchTxt.text() not in v[1]: continue
+			if v[2] not in self.label: continue
+			if not fromTime<=datetime.datetime.fromisoformat(v[3])<=tillTime: continue
+			self.searchTable.insertRow(k)
+			quote=QLabel(v[1].replace("\n"," "),self)
+			quote.setContentsMargins(5,0,5,0)
+			quote.setToolTip(v[1])
+			label=QLabel(labels[v[2]],self)
+			label.setToolTip(labels[v[2]])
+			time=QLabel(v[3][:10],self)
+			time.setToolTip(v[3])
+			items=[quote,label,time]
+			items.append(QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id)))
+			items.append(QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id)))
+
+			for i in range(5):
+				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
+				self.searchTable.setCellWidget(k,i,items[i])
+
+	def edit_quote(self,id):
+		Edit_Quote(id).exec()
+		self.show_search()
+
+	def delete_quote(self,id):
+		if not confirm(self,"删除","确定删除？"): return
+		cur.execute("DELETE FROM quotes WHERE id=?",(id,))
+		con.commit()
+		self.show_search()
+
 class Sentences(QMainWindow):
 	def __init__(self):
 		super().__init__()
@@ -148,7 +248,6 @@ class Sentences(QMainWindow):
 
 		tab=QTabWidget(self)
 		tab.addTab(self.quote(),"摘录")
-		tab.addTab(self.search(),"搜索")
 		tab.addTab(self.label(),"标签")
 		tab.addTab(self.preference(),"设置")
 
@@ -162,9 +261,7 @@ class Sentences(QMainWindow):
 		for i in range(5):
 			layout.setColumnStretch(i,1)
 
-		self.quoteBtn=QPushButton("添加",self,clicked=lambda _:self.edit_quote(-1))
-		layout.addWidget(self.quoteBtn,0,0,1,5)
-
+		layout.addWidget(QPushButton("添加",self,clicked=lambda _:self.edit_quote(-1)),0,0,1,5)
 		self.quoteTable=QTableWidget(self)
 		self.quoteTable.setColumnCount(5)
 		self.quoteTable.setHorizontalHeaderLabels(["摘录","标签","时间","编辑","删除"])
@@ -207,29 +304,6 @@ class Sentences(QMainWindow):
 		con.commit()
 		self.update_show()
 
-	def search(self):
-		widget=QWidget(self)
-		layout=QGridLayout()
-		widget.setLayout(layout)
-		for i in range(5):
-			layout.setColumnStretch(i,1)
-
-		self.searchTxt=QLineEdit(self)
-		self.searchBtn=QPushButton("搜索",self,clicked=self.search)
-		self.searchTxt.returnPressed.connect(self.searchBtn.click)
-		layout.addWidget(self.searchTxt,0,0,1,4)
-		layout.addWidget(self.searchBtn,0,4,1,1)
-
-		self.searchTable=QTableWidget(self)
-		self.searchTable.setColumnCount(5)
-		self.searchTable.setHorizontalHeaderLabels(["摘录","标签","时间","编辑","删除"])
-		width=[285,60,80,50,50]
-		for i in range(5):
-			self.searchTable.setColumnWidth(i,width[i])
-		layout.addWidget(self.searchTable,1,0,1,5)
-
-		return widget
-
 	def label(self):
 		widget=QWidget(self)
 		layout=QGridLayout()
@@ -237,9 +311,7 @@ class Sentences(QMainWindow):
 		for i in range(5):
 			layout.setColumnStretch(i,1)
 
-		self.labelBtn=QPushButton("添加",self,clicked=lambda _:self.edit_label(-1))
-		layout.addWidget(self.labelBtn,0,0,1,5)
-
+		layout.addWidget(QPushButton("添加",self,clicked=lambda _:self.edit_label(-1)),0,0,1,5)
 		self.labelTable=QTableWidget(self)
 		self.labelTable.setColumnCount(4)
 		self.labelTable.setHorizontalHeaderLabels(["标签","计数","编辑","删除"])
@@ -284,6 +356,10 @@ class Sentences(QMainWindow):
 		widget=QWidget(self)
 		layout=QGridLayout()
 		widget.setLayout(layout)
+		for i in range(5):
+			layout.setColumnStretch(i,1)
+
+		layout.addWidget(QPushButton("搜索",self,clicked=lambda _:Search().exec()),0,0,1,5)
 		return widget
 
 if __name__=="__main__":
