@@ -13,6 +13,28 @@ def confirm(parent,title,text):
 	res=QMessageBox.question(parent,title,text,QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
 	return res==QMessageBox.StandardButton.Yes
 
+class View_Quote(QDialog):
+	def __init__(self,id):
+		super().__init__()
+
+		self.id=id
+		self.setWindowTitle("摘录")
+		self.setFixedWidth(250)
+		layout=QGridLayout()
+		self.setLayout(layout)
+		for i in range(5):
+			layout.setColumnStretch(i,1)
+
+		layout.addWidget(QLabel("摘录内容：",self),0,0,1,5)
+		res=cur.execute("SELECT quote FROM quotes WHERE id=?",(id,)).fetchone()
+		quoteEdit=QPlainTextEdit(res[0],self)
+		quoteEdit.setReadOnly(True)
+		layout.addWidget(quoteEdit,1,0,1,5)
+
+		layout.addWidget(QPushButton("关闭",self,clicked=self.accept),2,0,1,5)
+		layout.setSpacing(15)
+		layout.setContentsMargins(15,15,15,15)
+
 class Sel_Label(QDialog):
 	def __init__(self,type):
 		super().__init__()
@@ -38,7 +60,9 @@ class Sel_Label(QDialog):
 		if type:
 			layout.addWidget(QPushButton("全选",self,clicked=lambda _:self.sel_all(True)),1,0,1,2)
 			layout.addWidget(QPushButton("全不选",self,clicked=lambda _:self.sel_all(False)),1,3,1,2)
-		layout.addWidget(QPushButton("确定",self,clicked=self.save),type+1,0,1,2)
+		save=QPushButton("确定",self,clicked=self.save)
+		save.setDefault(True)
+		layout.addWidget(save,type+1,0,1,2)
 		layout.addWidget(QPushButton("取消",self,clicked=self.reject),type+1,3,1,2)
 		layout.setSpacing(15)
 		layout.setContentsMargins(15,15,15,15)
@@ -97,7 +121,9 @@ class Edit_Quote(QDialog):
 		layout.addWidget(self.name,2,1,1,2)
 		layout.addWidget(QPushButton("选择",self,clicked=self.sel_label),2,3,1,2)
 
-		layout.addWidget(QPushButton("确定",self,clicked=self.save),3,0,1,2)
+		save=QPushButton("确定",self,clicked=self.save)
+		save.setDefault(True)
+		layout.addWidget(save,3,0,1,2)
 		layout.addWidget(QPushButton("取消",self,clicked=self.reject),3,3,1,2)
 		layout.setSpacing(15)
 		layout.setContentsMargins(15,15,15,15)
@@ -138,7 +164,8 @@ class Edit_Label(QDialog):
 		self.labelEdit=QLineEdit(res[0],self)
 		layout.addWidget(self.labelEdit,0,2,1,3)
 
-		layout.addWidget(QPushButton("确定",self,clicked=self.save),1,0,1,2)
+		save=QPushButton("确定",self,clicked=self.save)
+		layout.addWidget(save,1,0,1,2)
 		layout.addWidget(QPushButton("取消",self,clicked=self.reject),1,3,1,2)
 		layout.setSpacing(15)
 		layout.setContentsMargins(15,15,15,15)
@@ -163,9 +190,7 @@ class Search(QDialog):
 			layout.setColumnStretch(i,1)
 
 		self.label=[i[0] for i in cur.execute("SELECT id FROM labels").fetchall()]
-		labelBtn=QPushButton("选择标签",self,clicked=self.sel_label)
-		labelBtn.setAutoDefault(False)
-		layout.addWidget(labelBtn,0,6,1,2)
+		layout.addWidget(QPushButton("选择标签",self,clicked=self.sel_label),0,6,1,2)
 		fromLabel=QLabel("起始时间：",self)
 		self.fromTime=QDateTimeEdit(self,calendarPopup=True,dateTime=QDateTime(2000,1,1,0,0))
 		tillLabel=QLabel("结束时间：",self)
@@ -178,16 +203,17 @@ class Search(QDialog):
 		layout.addWidget(self.tillTime,1,4,1,2)
 
 		self.searchTxt=QLineEdit(self,placeholderText="搜索内容")
-		self.searchBtn=QPushButton("搜索",self,clicked=self.show_search)
-		self.searchTxt.returnPressed.connect(self.searchBtn.click)
+		searchBtn=QPushButton("搜索",self,clicked=self.show_search)
+		searchBtn.setDefault(True)
+		self.searchTxt.returnPressed.connect(searchBtn.click)
 		layout.addWidget(self.searchTxt,0,0,1,6)
-		layout.addWidget(self.searchBtn,1,6,1,2)
+		layout.addWidget(searchBtn,1,6,1,2)
 
 		self.searchTable=QTableWidget(self)
-		self.searchTable.setColumnCount(5)
-		self.searchTable.setHorizontalHeaderLabels(["摘录","标签","时间","编辑","删除"])
-		width=[272,60,80,50,50]
-		for i in range(5):
+		self.searchTable.setColumnCount(6)
+		self.searchTable.setHorizontalHeaderLabels(["摘录","标签","时间","查看","编辑","删除"])
+		width=[272,60,80,50,50,50]
+		for i in range(6):
 			self.searchTable.setColumnWidth(i,width[i])
 		layout.addWidget(self.searchTable,2,0,1,8)
 		layout.setContentsMargins(15,15,15,15)
@@ -218,18 +244,21 @@ class Search(QDialog):
 			label.setToolTip(labels[v[2]])
 			time=QLabel(v[3][:10],self)
 			time.setToolTip(v[3])
-			items=[quote,label,time]
-			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			view_btn=QPushButton("查看",self,clicked=lambda _,id=v[0]:self.view_quote(id))
 			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
 			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
+			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
 			if edit:
 				edit_btn.setEnabled(False)
 				delete_btn.setEnabled(False)
-			items=items+[edit_btn,delete_btn]
+			items=[quote,label,time,view_btn,edit_btn,delete_btn]
 
-			for i in range(5):
+			for i in range(6):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
 				self.searchTable.setCellWidget(k,i,items[i])
+
+	def view_quote(self,id):
+		View_Quote(id).exec()
 
 	def edit_quote(self,id):
 		Edit_Quote(id).exec()
@@ -282,10 +311,10 @@ class Sentences(QMainWindow):
 
 		layout.addWidget(QPushButton("添加",self,clicked=lambda _:self.edit_quote(-1)),0,0,1,5)
 		self.quoteTable=QTableWidget(self)
-		self.quoteTable.setColumnCount(5)
-		self.quoteTable.setHorizontalHeaderLabels(["摘录","标签","时间","编辑","删除"])
-		width=[268,60,80,50,50]
-		for i in range(5):
+		self.quoteTable.setColumnCount(6)
+		self.quoteTable.setHorizontalHeaderLabels(["摘录","标签","时间","查看","编辑","删除"])
+		width=[268,60,80,50,50,50]
+		for i in range(6):
 			self.quoteTable.setColumnWidth(i,width[i])
 		layout.addWidget(self.quoteTable,1,0,1,5)
 
@@ -305,18 +334,21 @@ class Sentences(QMainWindow):
 			label.setToolTip(labels[v[2]])
 			time=QLabel(v[3][:10],self)
 			time.setToolTip(v[3])
-			items=[quote,label,time]
-			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			view_btn=QPushButton("查看",self,clicked=lambda _,id=v[0]:self.view_quote(id))
 			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
 			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
+			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
 			if edit:
 				edit_btn.setEnabled(False)
 				delete_btn.setEnabled(False)
-			items=items+[edit_btn,delete_btn]
+			items=[quote,label,time,view_btn,edit_btn,delete_btn]
 
-			for i in range(5):
+			for i in range(6):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
 				self.quoteTable.setCellWidget(k,i,items[i])
+
+	def view_quote(self,id):
+		View_Quote(id).exec()
 
 	def edit_quote(self,id):
 		Edit_Quote(id).exec()
