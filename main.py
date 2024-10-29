@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication,QButtonGroup,QCheckBox,QDateTimeEdit,QD
 
 con,cur=None,None
 label_id=[]
+setting=QSettings("Mzxr","Sentences")
 
 def confirm(parent,title,text):
 	res=QMessageBox.question(parent,title,text,QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
@@ -247,7 +248,7 @@ class Search(QDialog):
 			view_btn=QPushButton("查看",self,clicked=lambda _,id=v[0]:self.view_quote(id))
 			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
 			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
-			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			edit=setting.value("edit")=="True"
 			if edit:
 				edit_btn.setEnabled(False)
 				delete_btn.setEnabled(False)
@@ -277,7 +278,6 @@ class Sentences(QMainWindow):
 		self.setWindowTitle("Sentences")
 		self.resize(500,500)
 
-		setting=QSettings("Mzxr","Sentences")
 		global con,cur
 		if not setting.value("path"):
 			QMessageBox.information(self,"提示","请选择数据的储存位置")
@@ -337,7 +337,7 @@ class Sentences(QMainWindow):
 			view_btn=QPushButton("查看",self,clicked=lambda _,id=v[0]:self.view_quote(id))
 			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_quote(id))
 			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_quote(id))
-			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+			edit=setting.value("edit")=="True"
 			if edit:
 				edit_btn.setEnabled(False)
 				delete_btn.setEnabled(False)
@@ -383,14 +383,13 @@ class Sentences(QMainWindow):
 		for k,v in enumerate(cur.execute("SELECT * FROM labels").fetchall()):
 			self.labelTable.insertRow(k)
 			count=cur.execute("SELECT COUNT(*) FROM quotes WHERE label=?",(v[0],)).fetchone()[0]
-			items=[QLabel(v[1],self),QLabel(str(count),self)]
-			edit=QSettings("Mzxr","Sentences").value("edit")=="True"
 			edit_btn=QPushButton("编辑",self,clicked=lambda _,id=v[0]:self.edit_label(id))
 			delete_btn=QPushButton("删除",self,clicked=lambda _,id=v[0]:self.delete_label(id))
+			edit=setting.value("edit")=="True"
 			if edit:
 				edit_btn.setEnabled(False)
 				delete_btn.setEnabled(False)
-			items=items+[edit_btn,delete_btn]
+			items=[QLabel(v[1],self),QLabel(str(count),self),edit_btn,delete_btn]
 
 			for i in range(4):
 				if i in [0,1]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -433,7 +432,7 @@ class Sentences(QMainWindow):
 		return widget
 
 	def show_preference(self):
-		edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+		edit=setting.value("edit")=="True"
 		text="禁止" if edit else "允许"
 		self.editBtn.setText(text)
 
@@ -442,22 +441,22 @@ class Sentences(QMainWindow):
 		self.update_show()
 
 	def set_path(self):
-		path1=QSettings("Mzxr","Sentences").value("path")
+		path1=setting.value("path")
 		path2=str(QFileDialog.getExistingDirectory(self,"选择数据位置"))
 		if not path2 or path1==path2: return
 		global con,cur
 		con.close()
 		try: os.rename(path1+"/sentences.db",path2+"/sentences.db")
 		except: return QMessageBox.critical(self,"错误","数据移动失败")
-		QSettings("Mzxr","Sentences").setValue("path",path2)
+		setting.setValue("path",path2)
 		con=sqlite3.connect(path2+"/sentences.db")
 		cur=con.cursor()
 
 	def set_edit(self):
-		edit=QSettings("Mzxr","Sentences").value("edit")=="True"
+		edit=setting.value("edit")=="True"
 		text="允许" if edit else "禁止"
 		if not confirm(self,text+"编辑","是否"+text+"编辑？"): return
-		QSettings("Mzxr","Sentences").setValue("edit",str(not edit))
+		setting.setValue("edit",str(not edit))
 		self.update_show()
 		self.show_preference()
 
