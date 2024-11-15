@@ -232,11 +232,13 @@ class Search(QDialog):
 			labels[i[0]]=i[1]
 		fromTime=self.fromTime.dateTime().toPyDateTime()
 		tillTime=self.tillTime.dateTime().toPyDateTime()
-		res=cur.execute("SELECT * FROM quotes ORDER BY time DESC").fetchall()
+		res=[]
+		for i in cur.execute("SELECT * FROM quotes ORDER BY time DESC").fetchall():
+			if self.searchTxt.text() not in i[1]: continue
+			if i[2] not in self.label: continue
+			if not fromTime<=datetime.datetime.fromisoformat(i[3])<=tillTime: continue
+			res.append(i)
 		for k,v in enumerate(res):
-			if self.searchTxt.text() not in v[1]: continue
-			if v[2] not in self.label: continue
-			if not fromTime<=datetime.datetime.fromisoformat(v[3])<=tillTime: continue
 			self.searchTable.insertRow(k)
 			quote=QLabel(v[1].replace("\n"," "),self)
 			quote.setContentsMargins(5,0,5,0)
@@ -257,9 +259,11 @@ class Search(QDialog):
 			for i in range(6):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
 				self.searchTable.setCellWidget(k,i,items[i])
+		self.searchTable.horizontalScrollBar().setValue(0)
 
 	def view_quote(self,id):
 		View_Quote(id).exec()
+		self.searchTable.horizontalScrollBar().setValue(0)
 
 	def edit_quote(self,id):
 		Edit_Quote(id).exec()
@@ -346,9 +350,11 @@ class Sentences(QMainWindow):
 			for i in range(6):
 				if i in [1,2]: items[i].setAlignment(Qt.AlignmentFlag.AlignCenter)
 				self.quoteTable.setCellWidget(k,i,items[i])
+		self.quoteTable.horizontalScrollBar().setValue(0)
 
 	def view_quote(self,id):
 		View_Quote(id).exec()
+		self.quoteTable.horizontalScrollBar().setValue(0)
 
 	def edit_quote(self,id):
 		Edit_Quote(id).exec()
